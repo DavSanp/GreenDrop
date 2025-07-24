@@ -1,12 +1,12 @@
+import threading
+import time
+import os
+import signal
 from flask import Flask, jsonify, send_from_directory, request
 from sensors import leer_temperatura_humedad
 from relay import activar_relay, desactivar_relay, estado_relay, liberar_gpio
 from logger import leer_registros, log_error
 from horarios import cargar_horarios, guardar_horarios, horario_actual_activo, guardar_ultimo_riego
-import threading
-import time
-import os
-import signal
 from config import UMBRAL_INICIAL, REPOSO_MINUTOS
 
 app = Flask(__name__, static_folder="static")
@@ -142,7 +142,6 @@ def riego_programado():
     while True:
         activo, duracion, reposo_activo = horario_actual_activo()
         temp, hum = leer_temperatura_humedad()
-        # Para depurar, imprime el estado
         print(f"Activo: {activo}, Reposo: {reposo_activo}, Humedad: {hum}, Umbral: {UMBRAL}")
         if activo and not reposo_activo and hum is not None and hum < UMBRAL:
             if not estado_relay():
@@ -161,7 +160,6 @@ def manejo_senal(signum, frame):
     print("[GreenDrop] GPIO liberado y servidor apagado.")
     exit(0)
 
-import signal
 signal.signal(signal.SIGINT, manejo_senal)
 signal.signal(signal.SIGTERM, manejo_senal)
 
