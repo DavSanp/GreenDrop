@@ -1,10 +1,11 @@
+# src/horarios.py
+
 import json
 import os
 from datetime import datetime, timedelta
-from config import REPOSO_MINUTOS
 
 HORARIOS_FILE = "horarios.json"
-REPOSO_FILE = "ultimo_riego.txt"
+REPOSO_FILE = "ultimo_riego.txt"  # Ya no se usa, pero puedes dejarlo si lo requiere el logger
 
 def cargar_horarios():
     if not os.path.exists(HORARIOS_FILE):
@@ -17,10 +18,12 @@ def guardar_horarios(lista_horarios):
         json.dump(lista_horarios, f)
 
 def guardar_ultimo_riego():
+    # Mantén la función si la llama el logger, aunque ya no se use para bloquear riegos
     with open(REPOSO_FILE, "w") as f:
         f.write(datetime.now().isoformat())
 
 def tiempo_desde_ultimo_riego():
+    # Ya no se usa para bloquear riegos, solo referencia
     if not os.path.exists(REPOSO_FILE):
         return None
     with open(REPOSO_FILE, "r") as f:
@@ -35,7 +38,7 @@ def horario_actual_activo():
     Retorna:
       activo (bool): si hay horario activo ahora
       duracion (int): duración del horario activo
-      reposo_activo (bool): True si no se puede regar por tiempo de reposo
+      reposo_activo (bool): SIEMPRE False (eliminamos el control de reposo)
     """
     ahora = datetime.now()
     horarios = cargar_horarios()
@@ -45,9 +48,5 @@ def horario_actual_activo():
         )
         fin = inicio + timedelta(minutes=h.get("duracion", 5))
         if inicio <= ahora < fin:
-            minutos_reposo = tiempo_desde_ultimo_riego()
-            if minutos_reposo is None or minutos_reposo >= REPOSO_MINUTOS:
-                return True, h.get("duracion", 5), False
-            else:
-                return True, h.get("duracion", 5), True
+            return True, h.get("duracion", 5), False
     return False, 0, False
