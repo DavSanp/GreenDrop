@@ -111,6 +111,7 @@
   </style>
 </head>
 <body>
+  <div id="notificaciones"></div>
   <h1>🌿 GreenDrop</h1>
   <div class="container">
     <div class="card">
@@ -123,6 +124,9 @@
       <button class="btn-umbral" onclick="actualizarUmbral()">Actualizar Umbral</button>
       <button class="btn-activar" onclick="activarRiego()">💧 Activar Riego</button>
       <button class="btn-desactivar" onclick="desactivarRiego()">🛑 Desactivar Riego</button>
+      <label for="reposoMin">⏳ Tiempo mínimo entre riegos automáticos (min):</label>
+      <input type="number" id="reposoMin" min="1" max="120" value="20" style="width:90px;display:inline-block;">
+      <button class="btn-umbral" style="width:auto;display:inline-block;margin-left:8px;" onclick="actualizarReposo()">Actualizar reposo</button>
     </div>
   </div>
 
@@ -132,6 +136,7 @@
       <ul id="horario-lista" class="horario-lista"></ul>
       <div style="display: flex; gap:8px;">
         <input type="time" id="nuevoHorario" style="flex:1;" />
+        <input type="number" id="nuevaDuracion" min="1" max="120" value="5" style="width:70px;" placeholder="min" />
         <button class="btn-agregar" onclick="agregarHorario()" style="flex:1;">Agregar horario</button>
       </div>
     </div>
@@ -140,6 +145,7 @@
   <div class="container">
     <div class="card">
       <div class="section-title">📝 Historial de Riego</div>
+      <button class="btn-desactivar" style="width:auto; margin-bottom:7px;" onclick="borrarRegistros()">🗑️ Limpiar historial</button>
       <div id="no-log" class="no-log">Cargando registros...</div>
       <table id="tabla-registros" style="display:none;">
         <thead>
@@ -160,6 +166,19 @@
   </div>
 
   <script>
+    // ---------- Notificaciones ----------
+    function notificar(msg, ok=true) {
+      const div = document.getElementById("notificaciones");
+      div.innerHTML = `<div style="
+        margin:14px auto;
+        max-width:420px;
+        background:${ok?'#008d37':'#a61c1c'};color:white;
+        padding:12px;border-radius:9px;text-align:center;font-weight:bold;">
+        ${msg}
+        </div>`;
+      setTimeout(() => { div.innerHTML = ""; }, 3600);
+    }
+
     async function cargarDatos() {
       try {
         const res = await fetch("/api/status");
@@ -168,6 +187,7 @@
         document.getElementById("humedad").innerText = (data.humedad !== null && data.humedad !== undefined) ? data.humedad : "--";
         document.getElementById("umbral").innerText = data.umbral !== undefined ? data.umbral : "--";
         document.getElementById("estado").innerText = data.relay !== undefined ? data.relay : "--";
+        document.getElementById("reposoMin").value = data.reposo_min;
       } catch (e) {
         console.error("Error al cargar datos:", e);
       }
@@ -176,33 +196,54 @@
     async function actualizarUmbral() {
       const valor = parseFloat(document.getElementById("nuevoUmbral").value);
       if (isNaN(valor) || valor < 0 || valor > 100) {
-        alert("Ingrese un valor válido entre 0 y 100.");
+        notificar("Ingrese un valor válido entre 0 y 100.", false);
         return;
       }
-      await fetch("/api/umbral", {
+      const res = await fetch("/api/umbral", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ umbral: valor })
       });
+      const data = await res.json();
+      notificar(data.mensaje || "Umbral actualizado.", data.ok);
       cargarDatos();
     }
 
     async function activarRiego() {
-      await fetch("/api/riego", {
+      const res = await fetch("/api/riego", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion: "ON" })
       });
+      const data = await res.json();
+      notificar(data.mensaje || "Riego activado.", data.ok);
       cargarDatos();
     }
 
     async function desactivarRiego() {
-      await fetch("/api/riego", {
+      const res = await fetch("/api/riego", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion: "OFF" })
       });
+      const data = await res.json();
+      notificar(data.mensaje || "Riego desactivado.", data.ok);
       cargarDatos();
+    }
+
+    async function actualizarReposo() {
+      const valor = parseInt(document.getElementById("reposoMin").value);
+      if (isNaN(valor) || valor < 1 || valor > 120) {
+        notificar("Ingrese un valor válido para el reposo (1-120 min)", false);
+        return;
+      }
+      const res = await fetch("/api/reposo", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ reposo: valor })
+      });
+      const data = await res.json();
+      notificar(data.mensaje || "Reposo actualizado.", data.ok);
     }
 
     // ----------------- Historial de registros ------------------
@@ -239,6 +280,15 @@
       }
     }
 
+    async function borrarRegistros() {
+      if (confirm("¿Seguro que quieres eliminar todo el historial?")) {
+        const res = await fetch("/api/registros", { method: "DELETE" });
+        const data = await res.json();
+        notificar(data.mensaje || "Historial eliminado.", data.ok);
+        cargarRegistros();
+      }
+    }
+
     // ------------- Gestión de horarios programados ------------
     async function cargarHorarios() {
       const ul = document.getElementById("horario-lista");
@@ -250,13 +300,13 @@
         if (horarios.length === 0) {
           ul.innerHTML = "<li style='color:#aaa'>No hay horarios programados.</li>";
         } else {
-          horarios.forEach(horario => {
+          horarios.forEach((h, idx) => {
             const li = document.createElement("li");
-            li.innerText = horario;
+            li.innerText = h.hora + " (" + h.duracion + " min)";
             const btn = document.createElement("button");
             btn.innerText = "Eliminar";
             btn.className = "btn-eliminar";
-            btn.onclick = () => eliminarHorario(horario);
+            btn.onclick = () => eliminarHorario(idx);
             li.appendChild(btn);
             ul.appendChild(li);
           });
@@ -267,37 +317,42 @@
     }
 
     async function agregarHorario() {
-      const nuevo = document.getElementById("nuevoHorario").value;
-      if (!/^\d{2}:\d{2}$/.test(nuevo)) {
-        alert("Ingrese un horario válido en formato HH:MM");
+      const hora = document.getElementById("nuevoHorario").value;
+      const duracion = parseInt(document.getElementById("nuevaDuracion").value);
+      if (!/^\d{2}:\d{2}$/.test(hora) || isNaN(duracion) || duracion < 1 || duracion > 120) {
+        notificar("Ingrese una hora válida (HH:MM) y duración (1-120 minutos).", false);
         return;
       }
       const res = await fetch("/api/horarios");
       const data = await res.json();
       const horarios = data.horarios || [];
-      if (horarios.includes(nuevo)) {
-        alert("Ese horario ya está agregado.");
+      if (horarios.some(h => h.hora === hora)) {
+        notificar("Ese horario ya está agregado.", false);
         return;
       }
-      horarios.push(nuevo);
+      horarios.push({ hora, duracion });
       await fetch("/api/horarios", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({ horarios })
       });
       document.getElementById("nuevoHorario").value = "";
+      document.getElementById("nuevaDuracion").value = "5";
+      notificar("Horario agregado.", true);
       cargarHorarios();
     }
 
-    async function eliminarHorario(horario) {
+    async function eliminarHorario(idx) {
       const res = await fetch("/api/horarios");
       const data = await res.json();
-      const horarios = (data.horarios || []).filter(h => h !== horario);
+      const horarios = data.horarios || [];
+      horarios.splice(idx, 1);
       await fetch("/api/horarios", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({ horarios })
       });
+      notificar("Horario eliminado.", true);
       cargarHorarios();
     }
 

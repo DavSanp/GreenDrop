@@ -4,16 +4,17 @@ from flask import Flask, jsonify, send_from_directory, request
 from sensors import leer_temperatura_humedad
 from relay import activar_relay, desactivar_relay, estado_relay
 from logger import leer_registros
-from horarios import cargar_horarios, guardar_horarios, es_hora_de_riego
+from horarios import cargar_horarios, guardar_horarios, horario_actual_activo, guardar_ultimo_riego
 import threading
 import time
 import os
+from config import UMBRAL_INICIAL, REPOSO_MINUTOS
 
 app = Flask(__name__, static_folder="static")
 
-# Umbral persistente
-UMBRAL = 40.0
+UMBRAL = UMBRAL_INICIAL
 UMBRAL_FILE = "umbral.txt"
+REPOSO_MIN_FILE = "reposo_min.txt"
 
 def cargar_umbral():
     global UMBRAL
@@ -28,6 +29,19 @@ def guardar_umbral(valor):
     with open(UMBRAL_FILE, "w") as f:
         f.write(str(valor))
 
+def cargar_reposo():
+    if os.path.exists(REPOSO_MIN_FILE):
+        with open(REPOSO_MIN_FILE) as f:
+            try:
+                return int(f.read().strip())
+            except:
+                pass
+    return REPOSO_MINUTOS
+
+def guardar_reposo(valor):
+    with open(REPOSO_MIN_FILE, "w") as f:
+        f.write(str(valor))
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -40,7 +54,8 @@ def status():
         "temperatura": temp,
         "humedad": hum,
         "umbral": UMBRAL,
-        "relay": "ON" if relay else "OFF"
+        "relay": "ON" if relay else "OFF",
+        "reposo_min": cargar_reposo()
     })
 
 @app.route('/api/riego', methods=['POST'])
@@ -49,11 +64,13 @@ def set_riego():
     accion = data.get("accion", "").upper()
     if accion == "ON":
         activar_relay()
+        guardar_ultimo_riego()
+        return jsonify({"relay": "ON", "ok": True, "mensaje": "Riego activado manualmente."})
     elif accion == "OFF":
         desactivar_relay()
+        return jsonify({"relay": "OFF", "ok": True, "mensaje": "Riego desactivado manualmente."})
     else:
         return jsonify({"error": "Acción inválida"}), 400
-    return jsonify({"relay": "ON" if estado_relay() else "OFF"})
 
 @app.route('/api/umbral', methods=['POST'])
 def set_umbral():
@@ -64,7 +81,7 @@ def set_umbral():
         nuevo_umbral = float(nuevo_umbral)
         UMBRAL = nuevo_umbral
         guardar_umbral(UMBRAL)
-        return jsonify({"umbral": UMBRAL})
+        return jsonify({"umbral": UMBRAL, "ok": True, "mensaje": "Umbral actualizado."})
     except:
         return jsonify({"error": "Umbral inválido"}), 400
 
@@ -72,6 +89,14 @@ def set_umbral():
 def api_registros():
     registros = leer_registros()
     return jsonify({"registros": registros})
+
+@app.route("/api/registros", methods=["DELETE"])
+def borrar_registros():
+    try:
+        os.remove("registro_riego.csv")
+    except:
+        pass
+    return jsonify({"ok": True, "mensaje": "Historial eliminado."})
 
 @app.route("/api/horarios", methods=["GET"])
 def get_horarios():
@@ -83,19 +108,35 @@ def set_horarios():
     horarios = data.get("horarios")
     if not isinstance(horarios, list):
         return jsonify({"error": "Formato inválido"}), 400
+    for h in horarios:
+        if not isinstance(h, dict) or "hora" not in h or "duracion" not in h:
+            return jsonify({"error": "Formato de horario inválido"}), 400
     guardar_horarios(horarios)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "mensaje": "Horarios actualizados."})
 
-# Thread para riego programado
+@app.route("/api/reposo", methods=["POST"])
+def set_reposo():
+    data = request.get_json()
+    valor = data.get("reposo")
+    try:
+        valor = int(valor)
+        guardar_reposo(valor)
+        return jsonify({"ok": True, "mensaje": f"Reposo mínimo actualizado a {valor} min."})
+    except:
+        return jsonify({"error": "Valor inválido"}), 400
+
+# Thread para riego programado (con reposo)
 def riego_programado():
     while True:
-        if es_hora_de_riego():
+        activo, duracion = horario_actual_activo()
+        if activo:
             if not estado_relay():
                 activar_relay()
+                guardar_ultimo_riego()
         else:
             if estado_relay():
                 desactivar_relay()
-        time.sleep(60)
+        time.sleep(30)
 
 if __name__ == "__main__":
     cargar_umbral()
