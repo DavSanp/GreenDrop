@@ -1,5 +1,3 @@
-# src/server.py
-
 from flask import Flask, jsonify, send_from_directory, request
 from sensors import leer_temperatura_humedad
 from relay import activar_relay, desactivar_relay, estado_relay, liberar_gpio
@@ -60,14 +58,15 @@ def index():
 def status():
     temp, hum = leer_temperatura_humedad()
     relay = estado_relay()
-    temp_pi = temperatura_raspberry()
+    activo, duracion, reposo_activo = horario_actual_activo()
     return jsonify({
         "temperatura": temp,
         "humedad": hum,
         "umbral": UMBRAL,
         "relay": "ON" if relay else "OFF",
         "reposo_min": cargar_reposo(),
-        "temp_raspberry": temp_pi
+        "reposo_activo": reposo_activo,
+        "temp_raspberry": temperatura_raspberry()
     })
 
 @app.route('/api/riego', methods=['POST'])
@@ -139,29 +138,32 @@ def set_reposo():
         log_error(f"Error actualizando reposo: {e}")
         return jsonify({"error": "Valor inválido"}), 400
 
-# Thread para riego programado (con reposo)
 def riego_programado():
     while True:
-        activo, duracion = horario_actual_activo()
-        if activo:
+        activo, duracion, reposo_activo = horario_actual_activo()
+        temp, hum = leer_temperatura_humedad()
+        # Para depurar, imprime el estado
+        print(f"Activo: {activo}, Reposo: {reposo_activo}, Humedad: {hum}, Umbral: {UMBRAL}")
+        if activo and not reposo_activo and hum is not None and hum < UMBRAL:
             if not estado_relay():
+                print("Activando riego")
                 activar_relay()
                 guardar_ultimo_riego()
         else:
             if estado_relay():
+                print("Desactivando riego")
                 desactivar_relay()
         time.sleep(30)
 
-# Señales UNIX: limpieza de GPIO y shutdown seguro
 def manejo_senal(signum, frame):
     print(f"\n[GreenDrop] Señal recibida ({signum}). Liberando recursos...")
     liberar_gpio()
     print("[GreenDrop] GPIO liberado y servidor apagado.")
     exit(0)
 
-# Registrar manejo de señales
-signal.signal(signal.SIGINT, manejo_senal)   # Ctrl+C
-signal.signal(signal.SIGTERM, manejo_senal)  # systemctl stop/reboot
+import signal
+signal.signal(signal.SIGINT, manejo_senal)
+signal.signal(signal.SIGTERM, manejo_senal)
 
 if __name__ == "__main__":
     cargar_umbral()

@@ -1,5 +1,3 @@
-# src/horarios.py
-
 import json
 import os
 from datetime import datetime, timedelta
@@ -33,7 +31,12 @@ def tiempo_desde_ultimo_riego():
             return None
 
 def horario_actual_activo():
-    """Devuelve True/False si corresponde regar y respeta tiempo de reposo."""
+    """
+    Retorna:
+      activo (bool): si hay horario activo ahora
+      duracion (int): duración del horario activo
+      reposo_activo (bool): True si no se puede regar por tiempo de reposo
+    """
     ahora = datetime.now()
     horarios = cargar_horarios()
     for h in horarios:
@@ -44,5 +47,7 @@ def horario_actual_activo():
         if inicio <= ahora < fin:
             minutos_reposo = tiempo_desde_ultimo_riego()
             if minutos_reposo is None or minutos_reposo >= REPOSO_MINUTOS:
-                return True, h.get("duracion", 5)
-    return False, 0
+                return True, h.get("duracion", 5), False
+            else:
+                return True, h.get("duracion", 5), True
+    return False, 0, False
