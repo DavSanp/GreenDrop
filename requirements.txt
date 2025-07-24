@@ -1,0 +1,4 @@
+flask
+adafruit-circuitpython-dht
+RPi.GPIO
+

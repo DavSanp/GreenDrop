@@ -1,0 +1,14 @@
+# Archivos binarios
+greendrop
+
+# Archivos temporales de compilación
+*.o
+*.out
+
+# Archivos de Python
+__pycache__/
+*.pyc
+
+# Directorios de IDEs
+.vscode/
+.idea/
