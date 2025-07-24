@@ -2,12 +2,13 @@
 
 from flask import Flask, jsonify, send_from_directory, request
 from sensors import leer_temperatura_humedad
-from relay import activar_relay, desactivar_relay, estado_relay
-from logger import leer_registros
+from relay import activar_relay, desactivar_relay, estado_relay, liberar_gpio
+from logger import leer_registros, log_error
 from horarios import cargar_horarios, guardar_horarios, horario_actual_activo, guardar_ultimo_riego
 import threading
 import time
 import os
+import signal
 from config import UMBRAL_INICIAL, REPOSO_MINUTOS
 
 app = Flask(__name__, static_folder="static")
@@ -22,8 +23,8 @@ def cargar_umbral():
         with open(UMBRAL_FILE) as f:
             try:
                 UMBRAL = float(f.read().strip())
-            except:
-                pass
+            except Exception as e:
+                log_error(f"Error cargando umbral: {e}")
 
 def guardar_umbral(valor):
     with open(UMBRAL_FILE, "w") as f:
@@ -34,13 +35,22 @@ def cargar_reposo():
         with open(REPOSO_MIN_FILE) as f:
             try:
                 return int(f.read().strip())
-            except:
-                pass
+            except Exception as e:
+                log_error(f"Error cargando reposo: {e}")
     return REPOSO_MINUTOS
 
 def guardar_reposo(valor):
     with open(REPOSO_MIN_FILE, "w") as f:
         f.write(str(valor))
+
+def temperatura_raspberry():
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            temp_mil = int(f.read())
+            return round(temp_mil / 1000, 1)
+    except Exception as e:
+        log_error(f"No se pudo leer la temperatura de la Pi: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -50,12 +60,14 @@ def index():
 def status():
     temp, hum = leer_temperatura_humedad()
     relay = estado_relay()
+    temp_pi = temperatura_raspberry()
     return jsonify({
         "temperatura": temp,
         "humedad": hum,
         "umbral": UMBRAL,
         "relay": "ON" if relay else "OFF",
-        "reposo_min": cargar_reposo()
+        "reposo_min": cargar_reposo(),
+        "temp_raspberry": temp_pi
     })
 
 @app.route('/api/riego', methods=['POST'])
@@ -82,7 +94,8 @@ def set_umbral():
         UMBRAL = nuevo_umbral
         guardar_umbral(UMBRAL)
         return jsonify({"umbral": UMBRAL, "ok": True, "mensaje": "Umbral actualizado."})
-    except:
+    except Exception as e:
+        log_error(f"Error actualizando umbral: {e}")
         return jsonify({"error": "Umbral inválido"}), 400
 
 @app.route("/api/registros", methods=["GET"])
@@ -94,8 +107,8 @@ def api_registros():
 def borrar_registros():
     try:
         os.remove("registro_riego.csv")
-    except:
-        pass
+    except Exception as e:
+        log_error(f"Error borrando registros: {e}")
     return jsonify({"ok": True, "mensaje": "Historial eliminado."})
 
 @app.route("/api/horarios", methods=["GET"])
@@ -122,7 +135,8 @@ def set_reposo():
         valor = int(valor)
         guardar_reposo(valor)
         return jsonify({"ok": True, "mensaje": f"Reposo mínimo actualizado a {valor} min."})
-    except:
+    except Exception as e:
+        log_error(f"Error actualizando reposo: {e}")
         return jsonify({"error": "Valor inválido"}), 400
 
 # Thread para riego programado (con reposo)
@@ -137,6 +151,17 @@ def riego_programado():
             if estado_relay():
                 desactivar_relay()
         time.sleep(30)
+
+# Señales UNIX: limpieza de GPIO y shutdown seguro
+def manejo_senal(signum, frame):
+    print(f"\n[GreenDrop] Señal recibida ({signum}). Liberando recursos...")
+    liberar_gpio()
+    print("[GreenDrop] GPIO liberado y servidor apagado.")
+    exit(0)
+
+# Registrar manejo de señales
+signal.signal(signal.SIGINT, manejo_senal)   # Ctrl+C
+signal.signal(signal.SIGTERM, manejo_senal)  # systemctl stop/reboot
 
 if __name__ == "__main__":
     cargar_umbral()

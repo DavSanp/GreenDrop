@@ -115,8 +115,9 @@
   <h1>🌿 GreenDrop</h1>
   <div class="container">
     <div class="card">
-      <p><strong>🌡️ Temperatura actual:</strong> <span id="temperatura" class="status">--</span>°C</p>
-      <p><strong>💧 Humedad actual:</strong> <span id="humedad" class="status">--</span>%</p>
+      <p><strong>🌡️ Temperatura ambiente:</strong> <span id="temperatura" class="status">--</span>°C</p>
+      <p><strong>🌡️ Temp. Raspberry Pi:</strong> <span id="temp_pi" class="status">--</span>°C</p>
+      <p><strong>💧 Humedad ambiente:</strong> <span id="humedad" class="status">--</span>%</p>
       <p><strong>📉 Umbral configurado:</strong> <span id="umbral" class="status">--</span>%</p>
       <p><strong>💧 Estado del riego:</strong> <span id="estado" class="status">--</span></p>
       <label for="nuevoUmbral">🔧 Cambiar umbral (%):</label>
@@ -184,6 +185,7 @@
         const res = await fetch("/api/status");
         const data = await res.json();
         document.getElementById("temperatura").innerText = (data.temperatura !== null && data.temperatura !== undefined) ? data.temperatura : "--";
+        document.getElementById("temp_pi").innerText = data.temp_raspberry !== undefined && data.temp_raspberry !== null ? data.temp_raspberry : "--";
         document.getElementById("humedad").innerText = (data.humedad !== null && data.humedad !== undefined) ? data.humedad : "--";
         document.getElementById("umbral").innerText = data.umbral !== undefined ? data.umbral : "--";
         document.getElementById("estado").innerText = data.relay !== undefined ? data.relay : "--";

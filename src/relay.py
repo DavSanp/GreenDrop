@@ -20,3 +20,7 @@ def desactivar_relay():
 
 def estado_relay():
     return GPIO.input(RELAY_PIN) == GPIO.HIGH
+
+def liberar_gpio():
+    """Libera todos los recursos de GPIO (llamar antes de apagar/reiniciar el server)"""
+    GPIO.cleanup()
