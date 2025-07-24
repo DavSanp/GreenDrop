@@ -2,9 +2,9 @@
 
 import board
 import adafruit_dht
+from config import DHT_PIN
 
-DHT_PIN = board.D4
-dhtDevice = adafruit_dht.DHT11(DHT_PIN)
+dhtDevice = adafruit_dht.DHT11(getattr(board, f"D{DHT_PIN}"))
 
 def leer_temperatura_humedad():
     try:
@@ -14,4 +14,3 @@ def leer_temperatura_humedad():
     except Exception as e:
         print("Error leyendo sensor:", e)
         return None, None
-
