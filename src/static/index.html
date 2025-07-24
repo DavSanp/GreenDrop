@@ -113,6 +113,9 @@
 <body>
   <div id="notificaciones"></div>
   <h1>🌿 GreenDrop</h1>
+  <p style="text-align:center;font-size:1.3em;">
+    <span id="hora-actual"></span>
+  </p>
   <div class="container">
     <div class="card">
       <p><strong>🌡️ Temperatura ambiente:</strong> <span id="temperatura" class="status">--</span>°C</p>
@@ -179,6 +182,14 @@
         </div>`;
       setTimeout(() => { div.innerHTML = ""; }, 3600);
     }
+
+    function actualizarHora() {
+      const ahora = new Date();
+      let texto = ahora.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      document.getElementById('hora-actual').innerText = "🕒 Hora actual: " + texto;
+    }
+    setInterval(actualizarHora, 1000);
+    actualizarHora();
 
     async function cargarDatos() {
       try {
@@ -264,7 +275,6 @@
           document.getElementById("tabla-registros").style.display = "";
           document.getElementById("no-log").style.display = "none";
           registros.slice(-50).reverse().forEach(reg => {
-            // reg: [fecha, evento, temp, hum]
             const tr = document.createElement("tr");
             reg.forEach((d, i) => {
               const td = document.createElement("td");
